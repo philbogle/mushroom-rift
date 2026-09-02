@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goat Simulator 3: Cinematic Cutscene</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Impact', 'Arial Black', sans-serif;
+            background-color: #1a1a1a;
+        }
+        #webgl-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        
+        /* Play Button & Title Overlay */
+        #play-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            pointer-events: auto;
+            transition: opacity 0.5s ease;
+        }
+
+        .header {
+            text-align: center;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 20px 40px;
+            border-radius: 15px;
+            border: 3px solid #7000ff;
+            box-shadow: 0 0 20px rgba(112, 0, 255, 0.6);
+            backdrop-filter: blur(5px);
+            width: max-content;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            color: #ffffff;
+            font-size: 2.5rem;
+            text-shadow: 3px 3px 0px #000, -2px -2px 0px #7000ff;
+            letter-spacing: 2px;
+        }
+        .header h2 {
+            color: #72ff00;
+            font-size: 1.8rem;
+            text-shadow: 2px 2px 0px #000;
+            margin-top: 5px;
+        }
+        .header h3 {
+            color: #ff9d00;
+            font-size: 1.8rem;
+            text-shadow: 2px 2px 0px #000;
+            margin-top: 15px;
+            font-family: sans-serif;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-weight: 900;
+        }
+
+        .btn-play {
+            background: linear-gradient(180deg, #72ff00 0%, #3e8e00 100%);
+            color: black;
+            border: 4px solid #fff;
+            padding: 20px 60px;
+            font-size: 2.8rem;
+            font-family: inherit;
+            border-radius: 20px;
+            cursor: pointer;
+            box-shadow: 0 8px 0 #235200, 0 0 40px #72ff00;
+            transition: transform 0.1s;
+        }
+        .btn-play:active { transform: translateY(6px); box-shadow: 0 2px 0 #235200, 0 0 20px #72ff00; }
+        .btn-play:disabled { background: #555; color: #888; box-shadow: none; border-color: #444; cursor: not-allowed; }
+        #loading-text { color: white; font-size: 1.2rem; margin-top: 15px; font-family: sans-serif; }
+
+        /* End Screen Overlay */
+        #end-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 30;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 2s ease;
+        }
+        #end-screen h1 {
+            color: white;
+            font-size: 4rem;
+            letter-spacing: 4px;
+            text-shadow: 0 0 25px #7000ff, 3px 3px 0px #000;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+</head>
+<body>
+
+    <div id="webgl-container"></div>
+
+    <div id="play-overlay">
+        <div class="header">
+            <h1>GOAT SIMULATOR 3</h1>
+            <h2>MUSHROOMS FROM THE RIFT</h2>
+            <h3>By Thomas Fine</h3>
+        </div>
+        <button class="btn-play" id="btn-play" disabled>LOADING...</button>
+        <div id="loading-text">Fetching 3D files...</div>
+    </div>
+
+    <div id="end-screen">
+        <h1>TO BE CONTINUED...</h1>
+    </div>
+
+    <audio id="bg-music" src="music.mp3" loop></audio>
+
+    <script>
+        // --- Web Audio Sound System ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+            
+            if (type === 'unlock') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523.25, now);
+                osc.frequency.setValueAtTime(659.25, now + 0.1);
+                osc.frequency.setValueAtTime(783.99, now + 0.2);
+                osc.frequency.setValueAtTime(1046.50, now + 0.3);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+                osc.start(now); osc.stop(now + 0.6);
+            } else if (type === 'hit') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(20, now + 0.2);
+                gain.gain.setValueAtTime(0.8, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now); osc.stop(now + 0.2);
+            } else if (type === 'rift') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(40, now);
+                osc.frequency.linearRampToValueAtTime(250, now + 2.0);
+                gain.gain.setValueAtTime(0.01, now);
+                gain.gain.linearRampToValueAtTime(0.4, now + 1.0);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 3.0);
+                osc.start(now); osc.stop(now + 3.0);
+            }
+        }
+
+        // --- Three.js Setup ---
+        const container = document.getElementById('webgl-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x020008);
+        scene.fog = new THREE.FogExp2(0x020008, 0.003);
+
+                // --- Night Sky ---
+        function createNightSky() {
+            // Add stars
+            const starsGeo = new THREE.BufferGeometry();
+            const starsCount = 5000;
+            const starsPos = new Float32Array(starsCount * 3);
+            for(let i = 0; i < starsCount; i++) {
+                const u = Math.random();
+                const v = Math.random();
+                const theta = u * 2.0 * Math.PI;
+                const phi = Math.acos(2.0 * v - 1.0);
+                const r = 150 + Math.random() * 50;
+                starsPos[i*3] = r * Math.sin(phi) * Math.cos(theta);
+                starsPos[i*3+1] = Math.abs(r * Math.sin(phi) * Math.sin(theta)); // Keep stars in upper hemisphere mostly
+                starsPos[i*3+2] = r * Math.cos(phi);
+            }
+            starsGeo.setAttribute('position', new THREE.BufferAttribute(starsPos, 3));
+            const starsMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.6, transparent: true, opacity: 0.9 });
+            const stars = new THREE.Points(starsGeo, starsMat);
+            scene.add(stars);
+            
+            // Add Moon
+            const moonGeo = new THREE.CircleGeometry(12, 32);
+            const moonMat = new THREE.MeshBasicMaterial({ color: 0xfffdd0, side: THREE.DoubleSide });
+            const moon = new THREE.Mesh(moonGeo, moonMat);
+            moon.position.set(-60, 80, -120);
+            moon.lookAt(0, 0, 0);
+            scene.add(moon);
+        }
+        createNightSky();
+
+        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        // Dynamic Camera Trackers
+        const targetCamPos = new THREE.Vector3(-12, 2.5, 4);
+        let actualLookAt = new THREE.Vector3(-12, 1.2, 0);
+        const targetLookAt = new THREE.Vector3(-12, 1.2, 0);
+        camera.position.copy(targetCamPos);
+
+        // --- Lighting ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const sunLight = new THREE.DirectionalLight(0xfffaed, 1.1);
+        sunLight.position.set(20, 40, 20); sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048; sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 0.5; sunLight.shadow.camera.far = 100;
+        const d = 35;
+        sunLight.shadow.camera.left = -d; sunLight.shadow.camera.right = d;
+        sunLight.shadow.camera.top = d; sunLight.shadow.camera.bottom = -d;
+        scene.add(sunLight);
+
+        // --- Procedural Textures ---
+        function generateMushroomTextures() {
+            const size = 512;
+            const canvas = document.createElement('canvas'); canvas.width = size; canvas.height = size; 
+            const ctx = canvas.getContext('2d');
+            
+            const bumpCanvas = document.createElement('canvas'); bumpCanvas.width = size; bumpCanvas.height = size;
+            const bumpCtx = bumpCanvas.getContext('2d');
+            bumpCtx.fillStyle = '#888888'; bumpCtx.fillRect(0, 0, size, size);
+
+            const grad = ctx.createRadialGradient(size/2, size/2, size*0.05, size/2, size/2, size*0.48);
+            grad.addColorStop(0, '#c73a2a'); grad.addColorStop(0.5, '#a62417'); grad.addColorStop(1, '#521008');
+            ctx.fillStyle = grad; ctx.fillRect(0, 0, size, size);
+            
+            const imgData = ctx.getImageData(0, 0, size, size);
+            const bumpData = bumpCtx.getImageData(0, 0, size, size);
+            for(let i = 0; i < imgData.data.length; i+=4) {
+                let noise = (Math.random() - 0.5) * 40;
+                imgData.data[i] += noise; imgData.data[i+1] += noise; imgData.data[i+2] += noise;
+                let bumpNoise = 128 + (Math.random() - 0.5) * 80;
+                bumpData.data[i] = bumpData.data[i+1] = bumpData.data[i+2] = bumpNoise;
+            }
+            ctx.putImageData(imgData, 0, 0);
+            bumpCtx.putImageData(bumpData, 0, 0);
+
+            const dots = [];
+            for (let i=0; i<35; i++) {
+                dots.push({x: Math.random()*size, y: Math.random()*size, r: 8 + Math.random()*22});
+            }
+            
+            dots.forEach(dot => { 
+                ctx.beginPath(); ctx.arc(dot.x, dot.y, dot.r, 0, Math.PI * 2); 
+                ctx.fillStyle = '#f0e6d5'; ctx.fill(); 
+                ctx.strokeStyle = '#d6ccbb'; ctx.lineWidth = 2; ctx.stroke();
+                bumpCtx.beginPath(); bumpCtx.arc(dot.x, dot.y, dot.r, 0, Math.PI * 2); 
+                bumpCtx.fillStyle = '#ffffff'; bumpCtx.fill(); 
+            });
+            return { map: new THREE.CanvasTexture(canvas), bumpMap: new THREE.CanvasTexture(bumpCanvas) };
+        }
+        const mushTex = generateMushroomTextures();
+        const mushroomTexture = mushTex.map;
+        const mushroomBumpMap = mushTex.bumpMap;
+        const capMat = new THREE.MeshStandardMaterial({ map: mushroomTexture, bumpMap: mushroomBumpMap, bumpScale: 0.2, roughness: 0.8, metalness: 0.05 });
+        const stemMat = new THREE.MeshStandardMaterial({ color: 0xe3d9c1, roughness: 0.9, bumpMap: mushroomBumpMap, bumpScale: 0.03 });
+
+        function generateGrassTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024; canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#4a8522'; ctx.fillRect(0, 0, 1024, 1024);
+            for(let i=0; i<15000; i++) {
+                ctx.fillStyle = ['#3d7317', '#569e26', '#407a1d', '#5fa134'][Math.floor(Math.random()*4)];
+                ctx.beginPath();
+                ctx.arc(Math.random()*1024, Math.random()*1024, Math.random()*5+1, 0, Math.PI*2);
+                ctx.fill();
+            }
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(12, 12);
+            return tex;
+        }
+        const grassTexture = generateGrassTexture();
+
+        // --- Ground Terrain ---
+        const groundGeo = new THREE.PlaneGeometry(160, 160, 64, 64);
+        const pos = groundGeo.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+            const vx = pos.getX(i); const vy = pos.getY(i);
+            const dist = Math.sqrt(vx * vx + vy * vy);
+            const flattenFactor = Math.min(1, Math.max(0, (dist - 15) / 10));
+            pos.setZ(i, (Math.sin(vx * 0.1) * Math.cos(vy * 0.1) * 1.5 + Math.sin(vx * 0.04) * 2) * flattenFactor);
+        }
+        groundGeo.computeVertexNormals();
+        const groundMat = new THREE.MeshStandardMaterial({ map: grassTexture, roughness: 0.9, metalness: 0.05 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
+        scene.add(ground);
+
+        // --- Space Texture for Rift ---
+        function generateSpaceTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024; canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+            
+            // Deep space background
+            ctx.fillStyle = '#020008';
+            ctx.fillRect(0, 0, 1024, 1024);
+            
+            // Nebula clouds
+            for(let i=0; i<20; i++) {
+                const x = Math.random() * 1024;
+                const y = Math.random() * 1024;
+                const r = 100 + Math.random() * 400;
+                const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+                const colors = ['rgba(120, 0, 255, 0.15)', 'rgba(255, 0, 120, 0.15)', 'rgba(0, 150, 255, 0.15)'];
+                grad.addColorStop(0, colors[Math.floor(Math.random()*colors.length)]);
+                grad.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, 1024, 1024);
+            }
+            
+            // Stars
+            for(let i=0; i<3000; i++) {
+                ctx.fillStyle = Math.random() > 0.5 ? '#ffffff' : '#ffddee';
+                ctx.globalAlpha = 0.3 + Math.random() * 0.7;
+                ctx.beginPath();
+                ctx.arc(Math.random()*1024, Math.random()*1024, Math.random()*1.5, 0, Math.PI*2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1.0;
+            
+            const tex = new THREE.CanvasTexture(canvas);
+            return tex;
+        }
+        const spaceTexture = generateSpaceTexture();
+
+        // Organic jagged edges
+        function makeJagged(geometry, amount, freq) {
+            const pos = geometry.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                let vx = pos.getX(i);
+                let vy = pos.getY(i);
+                let vz = pos.getZ(i);
+                if (Math.abs(vx) < 0.01 && Math.abs(vy) < 0.01 && Math.abs(vz) < 0.01) continue; 
+                
+                const angle = Math.atan2(vy, vx);
+                const noise = 1.0 + (Math.sin(angle * freq) * 0.5 + Math.cos(angle * freq * 1.7) * 0.25 + Math.sin(angle * freq * 3.3) * 0.15) * amount;
+                
+                pos.setX(i, vx * noise);
+                pos.setY(i, vy * noise);
+                pos.setZ(i, vz * noise);
+            }
+            geometry.computeVertexNormals();
+        }
+
+        // --- Sky Rift ---
+        const riftGroup = new THREE.Group();
+        riftGroup.position.set(0, 30, 0);
+        scene.add(riftGroup);
+
+        const riftTorusMat = new THREE.MeshBasicMaterial({ color: 0x9900ff, wireframe: true, transparent: true, opacity: 0 });
+        const riftTorusGeo = new THREE.TorusGeometry(12, 3, 32, 150);
+        makeJagged(riftTorusGeo, 0.15, 4);
+        const riftTorus = new THREE.Mesh(riftTorusGeo, riftTorusMat);
+        riftTorus.rotation.x = Math.PI / 2.5; 
+        riftGroup.add(riftTorus);
+
+        const innerRiftMat = new THREE.MeshBasicMaterial({ map: spaceTexture, side: THREE.DoubleSide, transparent: true, opacity: 0 });
+        const innerRiftGeo = new THREE.CircleGeometry(11.5, 64);
+        makeJagged(innerRiftGeo, 0.15, 6);
+        const innerRift = new THREE.Mesh(innerRiftGeo, innerRiftMat);
+        innerRift.rotation.x = Math.PI / 2.5; 
+        riftGroup.add(innerRift);
+
+        const innerRiftMat2 = new THREE.MeshBasicMaterial({ color: 0x7700ff, side: THREE.DoubleSide, transparent: true, opacity: 0, blending: THREE.AdditiveBlending });
+        const innerRiftGeo2 = new THREE.CircleGeometry(9, 64);
+        makeJagged(innerRiftGeo2, 0.15, 8);
+        const innerRift2 = new THREE.Mesh(innerRiftGeo2, innerRiftMat2);
+        innerRift2.rotation.x = Math.PI / 2.5; 
+        riftGroup.add(innerRift2);
+
+        const innerRiftMat3 = new THREE.MeshBasicMaterial({ color: 0xcc22ff, side: THREE.DoubleSide, transparent: true, opacity: 0, wireframe: true, blending: THREE.AdditiveBlending });
+        const innerRiftGeo3 = new THREE.TorusGeometry(8, 0.2, 16, 64);
+        makeJagged(innerRiftGeo3, 0.1, 5);
+        const innerRift3 = new THREE.Mesh(innerRiftGeo3, innerRiftMat3);
+        innerRift3.rotation.x = Math.PI / 2.5; 
+        riftGroup.add(innerRift3);
+
+        const riftLight = new THREE.PointLight(0xdc82ff, 0, 35);
+        riftGroup.add(riftLight);
+
+        const riftParticleSystems = [];
+        const riftParticleMats = [
+            new THREE.PointsMaterial({ color: 0xff88ff, size: 0.1, transparent: true, opacity: 0, blending: THREE.AdditiveBlending }),
+            new THREE.PointsMaterial({ color: 0xee55ee, size: 0.18, transparent: true, opacity: 0, blending: THREE.AdditiveBlending }),
+            new THREE.PointsMaterial({ color: 0xdd22dd, size: 0.25, transparent: true, opacity: 0, blending: THREE.AdditiveBlending })
+        ];
+
+        const totalRiftPCount = 4000;
+        for (let m = 0; m < riftParticleMats.length; m++) {
+            const geo = new THREE.BufferGeometry();
+            const pCount = Math.floor(totalRiftPCount / riftParticleMats.length);
+            const pos = new Float32Array(pCount * 3);
+            const phases = new Float32Array(pCount);
+            for(let i = 0; i < pCount; i++) {
+                // organic spherical distribution with hollow center
+                const u = Math.random();
+                const v = Math.random();
+                const theta = u * 2.0 * Math.PI;
+                const phi = Math.acos(2.0 * v - 1.0);
+                const radius = 3.0 + Math.random() * 8.5; // Hollow center between 0-3
+                
+                pos[i*3] = radius * Math.sin(phi) * Math.cos(theta);
+                pos[i*3+1] = (Math.random() - 0.5) * 6; // Squashed sphere
+                pos[i*3+2] = radius * Math.sin(phi) * Math.sin(theta);
+                
+                phases[i] = Math.random() * 100.0;
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            geo.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
+            const ps = new THREE.Points(geo, riftParticleMats[m]);
+            ps.rotation.x = Math.PI / 2.5;
+            riftGroup.add(ps);
+            riftParticleSystems.push(ps);
+        }
+
+        // --- Mushroom Balloon Assembly ---
+        const balloonAssembly = new THREE.Group();
+        balloonAssembly.position.set(0, 45, 0); 
+        balloonAssembly.visible = false;
+        scene.add(balloonAssembly);
+
+        const balloonCap = new THREE.Mesh(new THREE.SphereGeometry(3, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.55), capMat);
+        balloonCap.castShadow = true; balloonAssembly.add(balloonCap);
+        
+        const balloonGills = new THREE.Mesh(new THREE.CircleGeometry(3 * Math.sin(Math.PI * 0.55), 32), stemMat);
+        balloonGills.rotation.x = Math.PI / 2;
+        balloonGills.position.y = 3 * Math.cos(Math.PI * 0.55);
+        balloonGills.castShadow = true;
+        balloonCap.add(balloonGills);
+        
+        const balloonStem = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 0.6, 2.2, 16), stemMat);
+        balloonStem.position.y = -0.8; balloonCap.add(balloonStem);
+
+        const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 4, 8), new THREE.MeshBasicMaterial({ color: 0x333333 }));
+        cable.position.y = -3; balloonAssembly.add(cable);
+
+        // --- Claw Machine Arm ---
+        const clawGroup = new THREE.Group();
+        clawGroup.position.y = -5; balloonAssembly.add(clawGroup);
+
+        const clawMat = new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.8 });
+        clawGroup.add(new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.8, 12), clawMat));
+
+        for (let i = 0; i < 3; i++) {
+            const prongGroup = new THREE.Group(); prongGroup.rotation.y = (i * Math.PI * 2) / 3;
+            const pUp = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1, 0.15), clawMat);
+            pUp.position.set(0.4, -0.4, 0); pUp.rotation.z = -0.4;
+            const pLow = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.8, 0.12), clawMat);
+            pLow.position.set(0.65, -1.0, 0); pLow.rotation.z = 0.5;
+            prongGroup.add(pUp); prongGroup.add(pLow); clawGroup.add(prongGroup);
+        }
+
+        // --- Droppable Small Mushroom ---
+        const miniMush = new THREE.Group();
+        const miniCap = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), capMat);
+        const miniGills = new THREE.Mesh(new THREE.CircleGeometry(0.8 * Math.sin(Math.PI * 0.55), 16), stemMat);
+        miniGills.rotation.x = Math.PI / 2;
+        miniGills.position.y = 0.8 * Math.cos(Math.PI * 0.55);
+        miniCap.add(miniGills);
+        miniCap.castShadow = true;
+        const miniStemMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.2, 0.7, 8), stemMat);
+        miniStemMesh.position.y = -0.3;
+        miniMush.add(miniCap); miniMush.add(miniStemMesh);
+        miniMush.position.set(0, -1.3, 0);
+        clawGroup.add(miniMush);
+
+        // --- The Official Asset Goat Model ---
+        const goat = new THREE.Group();
+        goat.position.set(-12, 0, 0);
+        scene.add(goat);
+
+        const goatHeadGroup = new THREE.Group();
+        goat.add(goatHeadGroup);
+
+        const manager = new THREE.LoadingManager();
+        manager.onLoad = function () {
+            const btnPlay = document.getElementById('btn-play');
+            btnPlay.innerText = "▶ PLAY";
+            btnPlay.disabled = false;
+            document.getElementById('loading-text').style.display = "none";
+        };
+
+        const textureLoader = new THREE.TextureLoader(manager);
+        const objLoader = new THREE.OBJLoader(manager);
+        const goatMat = new THREE.MeshStandardMaterial({ roughness: 0.6 });
+
+        textureLoader.load('Goat_Dif_01.png', (texture) => {
+            goatMat.map = texture; goatMat.needsUpdate = true;
+        });
+
+        objLoader.load('goat.obj', (object) => {
+            const container = new THREE.Group();
+            container.add(object);
+
+            const rawBox = new THREE.Box3().setFromObject(object);
+            const center = rawBox.getCenter(new THREE.Vector3());
+            object.position.set(-center.x, 0, -center.z);
+            object.rotation.y = 0;
+
+            const scale = 4.5 / rawBox.getSize(new THREE.Vector3()).length(); 
+            container.scale.set(scale, scale, scale);
+            const scaledBox = new THREE.Box3().setFromObject(container);
+            container.position.y -= scaledBox.min.y;
+
+            object.traverse((child) => {
+                if (child.isMesh) { child.material = goatMat; child.castShadow = true; child.geometry.computeVertexNormals(); }
+            });
+            goatHeadGroup.add(container);
+            goat.lookAt(-10, 0, 2); 
+        });
+
+        // --- Exploding Mushrooms Data ---
+        let burstMushroomsActive = false;
+        const burstMushrooms = [];
+
+        // --- Particle Explosion Effect ---
+        const particleCount = 150;
+        const particleSystems = [];
+        const particleVelocities = [];
+        
+        const mats = [
+            new THREE.PointsMaterial({ color: 0xffffff, size: 0.1, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending }),
+            new THREE.PointsMaterial({ color: 0xffe666, size: 0.2, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending }),
+            new THREE.PointsMaterial({ color: 0xffaa00, size: 0.35, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending })
+        ];
+
+        for (let m = 0; m < mats.length; m++) {
+            const geo = new THREE.BufferGeometry();
+            const pCount = Math.floor(particleCount / mats.length);
+            const pos = new Float32Array(pCount * 3);
+            for (let i = 0; i < pCount; i++) {
+                pos[i * 3 + 1] = -100;
+                particleVelocities.push(new THREE.Vector3());
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            const ps = new THREE.Points(geo, mats[m]);
+            scene.add(ps);
+            particleSystems.push(ps);
+        }
+
+        function triggerExplosion(pos) {
+            let vIdx = 0;
+            particleSystems.forEach(ps => {
+                const positions = ps.geometry.attributes.position.array;
+                const pCount = positions.length / 3;
+                for (let i = 0; i < pCount; i++) {
+                    positions[i * 3] = pos.x; positions[i * 3 + 1] = pos.y + 0.5; positions[i * 3 + 2] = pos.z;
+                    particleVelocities[vIdx].set((Math.random() - 0.5) * 15, Math.random() * 10 + 5, (Math.random() - 0.5) * 15);
+                    vIdx++;
+                }
+                ps.geometry.attributes.position.needsUpdate = true;
+            });
+        }
+
+        // --- Cutscene Logic & Timeline ---
+        let isPlaying = false;
+        let t = 0; 
+        let hasHit = false;
+        let riftPlayed = false;
+
+        const startCamPos = new THREE.Vector3();
+        const endCamPos = new THREE.Vector3();
+
+        document.getElementById('btn-play').addEventListener('click', () => {
+            isPlaying = true; t = 0;
+            document.getElementById('play-overlay').style.opacity = '0';
+            setTimeout(() => document.getElementById('play-overlay').style.display = 'none', 500);
+            const bgMusic = document.getElementById('bg-music');
+            bgMusic.volume = 0.5; bgMusic.play();
+        });
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+            
+            // Darken the world drastically as the rift appears
+            let lightProg = Math.max(0, Math.min((t - 3) / 12.0, 1));
+            if (typeof ambientLight !== 'undefined') ambientLight.intensity = 0.6 - (lightProg * 0.15); // Drops to 0.45
+            if (typeof sunLight !== 'undefined') sunLight.intensity = 1.1 - (lightProg * 0.35); // Drops to 0.75
+
+            riftTorus.rotation.z = time * 0.8; innerRift.rotation.z = -time * 1.2; innerRift2.rotation.z = time * 1.5; innerRift3.rotation.z = -time * 2.5;
+            riftParticleSystems.forEach(ps => {
+                // ps.rotation.z = time * 0.2; // slight overall rotation
+                const rPos = ps.geometry.attributes.position.array;
+                const rPhase = ps.geometry.attributes.phase.array;
+                for(let i=0; i < rPhase.length; i++) {
+                    const x = rPos[i*3];
+                    const y = rPos[i*3+1];
+                    const z = rPos[i*3+2];
+                    
+                    const dist = Math.sqrt(x*x + z*z);
+                    // vortex swirling: closer to center rotates faster
+                    const angle = Math.atan2(z, x) + (2.5 / (dist + 1.0)) * delta; 
+                    
+                    const chaos = Math.sin(time * 2.0 + rPhase[i]);
+                    
+                    rPos[i*3] = Math.cos(angle) * dist + chaos * 0.03;
+                    rPos[i*3+2] = Math.sin(angle) * dist + chaos * 0.03;
+                    rPos[i*3+1] += Math.cos(time * 1.5 + rPhase[i]) * 0.04;
+                }
+                ps.geometry.attributes.position.needsUpdate = true;
+            });
+
+            let vIdx = 0;
+            particleSystems.forEach(ps => {
+                const pPositions = ps.geometry.attributes.position.array;
+                const pCount = pPositions.length / 3;
+                for (let i = 0; i < pCount; i++) {
+                    if (pPositions[i * 3 + 1] > 0) {
+                        pPositions[i * 3] += particleVelocities[vIdx].x * delta;
+                        pPositions[i * 3 + 1] += particleVelocities[vIdx].y * delta;
+                        pPositions[i * 3 + 2] += particleVelocities[vIdx].z * delta;
+                        particleVelocities[vIdx].y -= 9.8 * delta;
+                    }
+                    vIdx++;
+                }
+                ps.geometry.attributes.position.needsUpdate = true;
+            });
+
+            if (isPlaying) {
+                t += delta;
+
+                // --- PHASES ---
+
+                if (t < 3) {
+                    // Phase 1: Close-up on Goat, moving around slightly
+                    targetCamPos.set(-12 + Math.sin(time) * 0.5, 2.5, 4 + Math.cos(time) * 0.5);
+                    targetLookAt.set(-12, 1.2, 0);
+
+                    goat.position.set(-12 + Math.sin(time * 2) * 0.2, 0, Math.cos(time * 2) * 0.2);
+                    goat.lookAt(-10 + Math.sin(time), 0, 2 + Math.cos(time));
+                    goatHeadGroup.position.y = Math.abs(Math.sin(time * 4)) * 0.1;
+                }
+                else if (t < 17.0) {
+                    // Phase 2: Dramatic Rift Fade In & Balloon Descent (14 seconds total)
+                    if (!riftPlayed) {
+                        playSound('rift');
+                        riftPlayed = true;
+                        startCamPos.copy(camera.position);
+                        riftGroup.scale.set(0.01, 0.01, 0.01);
+                    }
+                    
+                    let pRift = Math.min((t - 3) / 9.0, 1);
+                    let scaleEase = 0.4 + 0.6 * Math.pow(pRift, 2); 
+                    riftGroup.scale.set(scaleEase, scaleEase, scaleEase);
+                    
+                    let opEase = Math.pow(pRift, 2);
+                    riftTorusMat.opacity = opEase;
+                    innerRiftMat.opacity = opEase;
+                    if(typeof innerRiftMat2 !== 'undefined') innerRiftMat2.opacity = opEase * 0.6;
+                    if(typeof innerRiftMat3 !== 'undefined') innerRiftMat3.opacity = opEase * 0.8;
+                    riftLight.intensity = opEase * 3;
+                    riftParticleMats.forEach(mat => mat.opacity = opEase * 0.7);
+                    
+                    let pDescend = Math.max(0, Math.min((t - 10.0) / 7.0, 1));
+                    if (t > 10.0) {
+                        balloonAssembly.visible = true;
+                    } else {
+                        balloonAssembly.visible = false;
+                    }
+                    // Stop at y=13, which is 17 units below the rift at y=30, making it CLEARLY visible outside!
+                    balloonAssembly.position.y = 45 - (pDescend * 32) + Math.sin(time * 1.5) * 0.4;
+                    balloonAssembly.rotation.z = Math.sin(time * 1.0) * 0.05;
+                    balloonAssembly.scale.set(1, 1, 1);
+
+                    let turnProg = Math.min((t - 3) / 2.0, 1);
+                    let turnEase = turnProg * turnProg * (3 - 2 * turnProg);
+                    let targetX = -10 + (10 * turnEase); 
+                    let targetZ = 2 - (2 * turnEase);
+                    goat.lookAt(targetX, goat.position.y, targetZ);
+                    goatHeadGroup.rotation.x = -0.5 * turnEase; 
+                    goatHeadGroup.position.y = 0;
+
+                    if (t < 10.0) {
+                        let camProg = Math.min((t - 3) / 7.0, 1);
+                        let ease = camProg * camProg * (3 - 2 * camProg);
+                        targetCamPos.lerpVectors(startCamPos, new THREE.Vector3(0, 3, 2), ease);
+                        targetLookAt.lerpVectors(new THREE.Vector3(-12, 1.2, 0), new THREE.Vector3(0, 30, 0), ease);
+                    } else {
+                        let camProg = Math.min((t - 10.0) / 5.0, 1);
+                        let ease = camProg * camProg * (3 - 2 * camProg);
+                        targetCamPos.lerpVectors(new THREE.Vector3(0, 3, 2), new THREE.Vector3(-16, 10, 18), ease);
+                        targetLookAt.lerpVectors(new THREE.Vector3(0, 30, 0), new THREE.Vector3(0, 8, 0), ease);
+                    }
+                }
+                else if (t < 19.5) {
+                    // Phase 3: Claw Descends from Balloon
+                    balloonAssembly.position.y = 13 + Math.sin(time * 1.5) * 0.4;
+                    
+                    let pClaw = Math.min((t - 17.0) / 2.5, 1);
+                    let currentDrop = Math.sin(pClaw * Math.PI / 2) * 4;
+                    clawGroup.position.y = -5 - currentDrop;
+                    cable.scale.y = 1 + (currentDrop / 4);
+                    cable.position.y = -3 - (currentDrop / 2);
+
+                    targetCamPos.set(14, 8, 14); targetLookAt.set(0, 7, 0);
+                }
+                else if (t < 21.0) {
+                    // Phase 4: Mushroom Drops to Ground
+                    balloonAssembly.position.y = 13 + Math.sin(time * 1.5) * 0.4;
+                    
+                    if (miniMush.parent === clawGroup) { 
+                        scene.attach(miniMush); 
+                        miniMush.userData.startY = miniMush.position.y;
+                    }
+                    let pFall = Math.min((t - 19.5) / 1.5, 1);
+                    // It will drop from y=2.7 to 0.65
+                    miniMush.position.y = miniMush.userData.startY - (pFall * 10);
+                    if (miniMush.position.y <= 0.65) miniMush.position.y = 0.65; // Hit the ground!
+
+                    targetCamPos.set(16, 8, 16); targetLookAt.set(0, 7, 0);
+                }
+                else if (t < 22.5) {
+                    // Phase 5: Claw RETRACTS ALL THE WAY into the balloon
+                    balloonAssembly.position.y = 13 + Math.sin(time * 1.5) * 0.4;
+
+                    let pRetract = Math.min((t - 21.0) / 1.5, 1);
+                    let currentDrop = 4 - (pRetract * 8); 
+                    
+                    clawGroup.position.y = -5 - currentDrop;
+                    cable.scale.y = Math.max(0.001, 1 + (currentDrop / 4));
+                    cable.position.y = -3 - (currentDrop / 2);
+
+                    targetCamPos.set(16, 8, 16); targetLookAt.set(0, 7, 0);
+                }
+                else if (t < 27.5) {
+                    // Phase 6: Goat SPIRALS IN towards Mushroom 
+                    balloonAssembly.position.y = 13 + Math.sin(time * 1.5) * 0.4;
+
+                    let pCirc = (t - 22.5) / 5.0; 
+                    let theta = Math.PI + (pCirc * Math.PI * 4); // 2 full rotations
+                    let radius = 12 - (pCirc * 7); // tightens from 12 to 5
+                    
+                    goat.position.set(Math.cos(theta) * radius, 0, Math.sin(theta) * radius);
+                    
+                    let n_pCirc = pCirc + 0.01;
+                    let n_theta = Math.PI + (n_pCirc * Math.PI * 4);
+                    let n_radius = 12 - (n_pCirc * 7);
+                    goat.lookAt(Math.cos(n_theta) * n_radius, goat.position.y, Math.sin(n_theta) * n_radius);
+                    
+                    goatHeadGroup.position.y = Math.abs(Math.sin(pCirc * Math.PI * 20)) * 0.2;
+
+                    let camTheta = theta - 0.5; 
+                    targetCamPos.set(Math.cos(camTheta) * (radius + 8), 6, Math.sin(camTheta) * (radius + 8));
+                    targetLookAt.copy(goat.position); targetLookAt.y = 1.5;
+                }
+                else if (t < 28.5) {
+                    // Phase 7: Smoothly Turn to Face Mushroom Dead-On
+                    balloonAssembly.position.y = 13 + Math.sin(time * 1.5) * 0.4;
+
+                    goatHeadGroup.position.y = 0; 
+                    goat.position.set(-5, 0, 0); 
+                    
+                    let pTurn = Math.min((t - 27.5) / 1.0, 1);
+                    let currentLookX = -5 + (pTurn * 5);
+                    let currentLookZ = 0; 
+                    goat.lookAt(currentLookX, goat.position.y, currentLookZ);
+
+                    targetCamPos.set(-15, 5, 0); targetLookAt.set(0, 2, 0);
+                }
+                else if (t < 29.5) {
+                    // Phase 8: Charge directly at Mushroom
+                    balloonAssembly.position.y = 13 + Math.sin(time * 1.5) * 0.4;
+
+                    let pLunge = (t - 28.5) / 1.0; 
+                    goat.position.set(-5 + pLunge * 3.5, 0, 0); 
+                    goat.lookAt(0, goat.position.y, 0); 
+
+                    goatHeadGroup.position.y = Math.sin(pLunge * Math.PI) * 1.5;
+                    goatHeadGroup.rotation.x = pLunge * 0.9;
+
+                    targetCamPos.set(goat.position.x - 6, 3, goat.position.z); 
+                }
+                else if (t < 30.5) {
+                    // Phase 9: IMPACT & VIOLENT SHAKE
+                    balloonAssembly.position.y = 13 + Math.sin(time * 1.5) * 0.4;
+
+                    if (!hasHit) {
+                        playSound('hit');
+                        hasHit = true;
+                    }
+                    goat.position.set(-1.5, 0, 0);
+                    
+                    goatHeadGroup.rotation.x = 0; 
+                    goatHeadGroup.position.y = 0;
+                    
+                    miniMush.position.x = Math.sin(time * 50) * 0.15;
+                    miniMush.rotation.z = Math.sin(time * 60) * 0.2;
+
+                    targetCamPos.set(-6, 3.5, 0);
+                }
+                else {
+                    // Phase 10: Explosion & 14 Flying Mushrooms
+                    balloonAssembly.position.y = 13 + Math.sin(time * 1.5) * 0.4;
+
+                    if (!burstMushroomsActive) {
+                        miniMush.position.x = 0; miniMush.rotation.z = 0; 
+                        triggerExplosion(miniMush.position);
+                        miniMush.visible = false;
+                        
+                        for (let i = 0; i < 60; i++) {
+                            const m = miniMush.clone();
+                            
+                            // Varied sizes
+                            let s = 0.4 + Math.random() * 1.5;
+                            m.scale.set(s, s, s);
+                            
+                            // Varied subtle colors for the cap
+                            m.traverse((child) => {
+                                if (child.isMesh && child.geometry.type === 'SphereGeometry') {
+                                    child.material = child.material.clone();
+                                    // Base is white. Tint randomly across red/orange/purple spectrum
+                                    // Hue between -0.1 and 0.1, high saturation, high lightness
+                                    child.material.color.setHSL(Math.random() * 0.2 - 0.1, 0.9, 0.7 + Math.random() * 0.3);
+                                }
+                            });
+
+                            m.position.copy(miniMush.position);
+                            m.visible = true;
+                            scene.add(m);
+                            burstMushrooms.push({
+                                mesh: m,
+                                vx: (Math.random() - 0.5) * 45,
+                                vy: Math.random() * 25 + 10,
+                                vz: (Math.random() - 0.5) * 45,
+                                rx: (Math.random() - 0.5) * 15,
+                                rz: (Math.random() - 0.5) * 15
+                            });
+                        }
+                        burstMushroomsActive = true;
+                        playSound('unlock');
+                    }
+
+                    burstMushrooms.forEach(b => {
+                        b.mesh.position.x += b.vx * delta;
+                        b.mesh.position.y += b.vy * delta;
+                        b.mesh.position.z += b.vz * delta;
+                        b.vy -= 40 * delta; 
+                        b.mesh.rotation.x += b.rx * delta;
+                        b.mesh.rotation.z += b.rz * delta;
+                        let floorY = b.mesh.scale.y * 0.85;
+                        if (b.mesh.position.y < floorY) {
+                            b.mesh.position.y = floorY;
+                            b.vy = Math.abs(b.vy) * 0.6; 
+                            b.vx *= 0.8;
+                            b.vz *= 0.8;
+                            b.rx *= 0.7; // Dampen spin when hitting the ground
+                            b.rz *= 0.7;
+                        }
+                    });
+
+                    let panTime = t - 30.5;
+                    targetCamPos.set(Math.sin(panTime * 0.4) * 15, 8, Math.cos(panTime * 0.4) * 15);
+                    targetLookAt.set(0, 2, 0);
+                    
+                    if (t > 35.5) {
+                        document.getElementById('end-screen').style.opacity = '1';
+                    }
+                }
+                // Smooth flying camera movement
+                camera.position.lerp(targetCamPos, 0.04);
+                actualLookAt.lerp(targetLookAt, 0.06);
+                camera.lookAt(actualLookAt);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
